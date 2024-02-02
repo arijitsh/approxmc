@@ -70,6 +70,7 @@ double var_elim_ratio;
 uint32_t detach_xors = 1;
 uint32_t reuse_models = 1;
 uint32_t force_sol_extension = 0;
+uint32_t pivot_by_sqrt2 = 0;
 uint32_t sparse = 0;
 int dump_intermediary_cnf = 0;
 uint32_t must_mult_exp2 = 0;
@@ -92,6 +93,7 @@ void add_appmc_options()
     var_elim_ratio = tmp.get_var_elim_ratio();
     sparse = tmp.get_sparse();
     seed = tmp.get_seed();
+    pivot_by_sqrt2 = tmp.get_pivot_by_sqrt2();
 
     std::ostringstream my_epsilon;
     std::ostringstream my_delta;
@@ -109,7 +111,7 @@ void add_appmc_options()
     ("version", "Print version info")
 
     ("epsilon,e", po::value(&epsilon)->default_value(epsilon, my_epsilon.str())
-        , "Tolerance parameter, i.e. how close is the count from the correct count? Count output is within bounds of (exact_count/(1+e)) < count < (exact_count*(1+e)). So e=0.8 means we'll output at most 180%% of exact count and at least 55%% of exact count. Lower value means more precise.")
+        , "Tolerance parameter, i.e. how close is the count from the correct count? Count ouptut is within bounds of (exact_count/(1+e)) < count < (exact_count*(1+e)). So e=0.8 means we'll ouptut at most 180%% of exact count and at least 55%% of exact count. Lower value means more precise.")
     ("delta,d", po::value(&delta)->default_value(delta, my_delta.str())
         , "Confidence parameter, i.e. how sure are we of the result? (1-d) = probability the count is within range as per epsilon parameter. So d=0.2 means we are 80%% sure the count is within range as specified by epsilon. The lower, the higher confidence we have in the count.")
     ("log", po::value(&logfilename),
@@ -120,11 +122,13 @@ void add_appmc_options()
     ;
 
     ArjunNS::Arjun tmpa;
+
     arjun_options.add_options()
     ("arjun", po::value(&do_arjun)->default_value(do_arjun)
         , "Use arjun to minimize sampling set")
     ("arjundebug", po::value(&debug_arjun)->default_value(debug_arjun)
         , "Use CNF from Arjun, but use sampling set from CNF")
+
     ;
 
     improvement_options.add_options()
@@ -136,6 +140,8 @@ void add_appmc_options()
         , "Reuse models while counting solutions")
     ("forcesolextension", po::value(&force_sol_extension)->default_value(force_sol_extension)
         , "Use trick of not extending solutions in the SAT solver to full solution")
+    ("pivotbysqrt2", po::value(&pivot_by_sqrt2)->default_value(pivot_by_sqrt2)
+     	, "round small counts to pivot by sqrt 2 when trying to find threshold number of solutions")
     ("withe", po::value(&with_e)->default_value(with_e)
         , "Eliminate variables and simplify CNF as well")
     ;
@@ -145,7 +151,7 @@ void add_appmc_options()
     ("verbcls", po::value(&verb_cls)->default_value(verb_cls)
         ,"Print banning clause + xor clauses. Highly verbose.")
     ("simplify", po::value(&simplify)->default_value(simplify)
-        , "Simplify aggressiveness")
+        , "Simplify agressiveness")
     ("velimratio", po::value(&var_elim_ratio)->default_value(var_elim_ratio)
         , "Variable elimination ratio for each simplify run")
     ("dumpintercnf", po::value(&dump_intermediary_cnf)->default_value(dump_intermediary_cnf)
@@ -188,7 +194,7 @@ void add_supported_options(int argc, char** argv)
     ) {
         cerr
         << "ERROR: Some option you gave was wrong. Please give '--help' to get help" << endl
-        << "       Unknown option: " << c.what() << endl;
+        << "       Unkown option: " << c.what() << endl;
         std::exit(-1);
     } catch (boost::bad_any_cast &e) {
         std::cerr
@@ -303,6 +309,7 @@ void read_in_file(const string& filename, T* myreader)
     sampling_vars_found = parser.sampling_vars_found;
     must_mult_exp2 = parser.must_mult_exp2;
 
+
     #ifndef USE_ZLIB
     fclose(in);
     #else
@@ -397,7 +404,8 @@ void print_num_solutions(uint32_t cellSolCount, uint32_t hashCount)
 
 }
 
-void get_cnf_from_arjun() {
+void get_cnf_from_arjun()
+{
     bool ret = true;
     const uint32_t orig_num_vars = arjun->get_orig_num_vars();
     appmc->new_vars(orig_num_vars);
@@ -408,13 +416,21 @@ void get_cnf_from_arjun() {
     vector<Lit> clause;
     while (ret) {
         ret = arjun->get_next_small_clause(clause);
-        if (!ret) break;
+        if (!ret) {
+            break;
+        }
 
         bool ok = true;
         for(auto l: clause) {
-            if (l.var() >= orig_num_vars) { ok = false; break; }
+            if (l.var() >= orig_num_vars) {
+                ok = false;
+                break;
+            }
         }
-        if (ok) appmc->add_clause(clause);
+
+        if (ok) {
+            appmc->add_clause(clause);
+        }
     }
     arjun->end_getting_small_clauses();
 
@@ -472,6 +488,7 @@ void set_approxmc_options()
     appmc->set_detach_xors(detach_xors);
     appmc->set_reuse_models(reuse_models);
     appmc->set_sparse(sparse);
+    appmc->set_pivot_by_sqrt2(pivot_by_sqrt2);
 
     //Misc options
     appmc->set_start_iter(start_iter);
@@ -485,6 +502,7 @@ void set_approxmc_options()
         appmc->set_debug(1);
         appmc->set_dump_intermediary_cnf(std::max(dump_intermediary_cnf, 1));
     }
+
 
     if (logfilename != "") {
         appmc->set_up_log(logfilename);
@@ -547,6 +565,7 @@ int main(int argc, char** argv)
         cout << appmc->get_version_info();
         cout << "c executed with command line: " << command_line << endl;
     }
+
     set_approxmc_options();
 
     uint32_t offset_count_by_2_pow = 0;
@@ -562,7 +581,7 @@ int main(int argc, char** argv)
         read_input_cnf(arjun);
         print_orig_sampling_vars(sampling_vars, arjun);
         auto debug_sampling_vars = sampling_vars; // debug ONLY
-        const uint32_t orig_sampling_set_size = set_up_sampling_set();
+        uint32_t orig_sampling_set_size = set_up_sampling_set();
         sampling_vars = arjun->get_indep_set();
         vector<uint32_t> empty_occ_sampl_vars;
         empty_occ_sampl_vars = arjun->get_empty_occ_sampl_vars();
@@ -580,6 +599,7 @@ int main(int argc, char** argv)
             for(auto const& v: empty_occ_sampl_vars) {
                 assert(sampl_vars_set.find(v) != sampl_vars_set.end()); // this is guaranteed by arjun
                 sampl_vars_set.erase(v);
+
             }
             offset_count_by_2_pow = empty_occ_sampl_vars.size();
             sampling_vars.clear();

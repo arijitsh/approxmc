@@ -180,6 +180,11 @@ DLL_PUBLIC void AppMC::set_sparse(uint32_t sparse)
     data->conf.sparse = sparse;
 }
 
+DLL_PUBLIC void AppMC::set_pivot_by_sqrt2(uint32_t pivot_by_sqrt2)
+{
+    data->conf.pivot_by_sqrt2 = pivot_by_sqrt2;
+}
+
 DLL_PUBLIC double AppMC::get_epsilon()
 {
     return data->conf.epsilon;
@@ -203,6 +208,11 @@ DLL_PUBLIC double AppMC::get_var_elim_ratio()
 DLL_PUBLIC uint32_t AppMC::get_sparse()
 {
     return data->conf.sparse;
+}
+
+DLL_PUBLIC uint32_t AppMC::get_pivot_by_sqrt2()
+{
+    return data->conf.pivot_by_sqrt2;
 }
 
 DLL_PUBLIC uint32_t AppMC::get_seed()

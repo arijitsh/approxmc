@@ -108,6 +108,8 @@ public:
     void set_debug(int debug);
     void set_force_sol_extension(int val);
 
+    void set_pivot_by_sqrt2(uint32_t pivot_by_sqrt2);
+
     //Querying default values
     const std::vector<uint32_t>& get_sampling_set() const;
     double get_epsilon();
@@ -117,6 +119,7 @@ public:
     double get_var_elim_ratio();
     uint32_t get_sparse();
     bool get_reuse_models();
+    uint32_t get_pivot_by_sqrt2();
 
 private:
     ////////////////////////////

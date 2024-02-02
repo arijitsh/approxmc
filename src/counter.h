@@ -188,7 +188,7 @@ private:
 
     //Data so we can output temporary count when catching the signal
     vector<uint64_t> numHashList;
-    vector<int64_t> numCountList;
+    vector<double> numCountList;
     template<class T> T findMedian(vector<T>& numList);
     template<class T> T findMin(vector<T>& numList);
 

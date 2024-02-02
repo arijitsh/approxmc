@@ -400,10 +400,20 @@ void Counter::set_up_probs_threshold_measurements(
     }
 
     measurements = (int)std::ceil(std::log2(3.0/conf.delta)*17);
-    for (int count = 0; count < 256; count++) {
+    if (conf.pivot_by_sqrt2) {
+        for (int count = 0; count < 40; count++) {
+        if (constants.iterationConfidencesPivot[count] >= 1 - conf.delta) {
+            measurements = count*2+1;
+            break;
+        }
+        }
+    }
+    else {
+        for (int count = 0; count < 256; count++) {
         if (constants.iterationConfidences[count] >= 1 - conf.delta) {
             measurements = count*2+1;
             break;
+        }
         }
     }
 }
@@ -454,6 +464,19 @@ ApproxMC::SolCount Counter::calc_est_count()
         return ret_count;
     }
 
+    if (conf.pivot_by_sqrt2) {
+	double pivot = 9.84*(1.0+(1.0/conf.epsilon))*(1.0+(1.0/conf.epsilon));
+    assert(numHashList.size() > 0);
+    if (numHashList[0] > 0) {
+        for (auto cnt_it = numCountList.begin(); cnt_it !=  numCountList.end(); cnt_it++) {
+            // if (*cnt_it < pivot / sqrt(2)) {
+            //         *cnt_it = pivot / sqrt(2);
+            // }
+            *cnt_it = pivot * sqrt(2);
+        }
+    }
+    }
+
     const auto minHash = findMin(numHashList);
     auto cnt_it = numCountList.begin();
     for (auto hash_it = numHashList.begin()
@@ -463,7 +486,11 @@ ApproxMC::SolCount Counter::calc_est_count()
         *cnt_it *= pow(2, (*hash_it) - minHash);
     }
     ret_count.valid = true;
-    ret_count.cellSolCount = findMedian(numCountList);
+    if (conf.pivot_by_sqrt2) {
+        ret_count.cellSolCount = std::round(findMedian(numCountList));
+    } else {
+        ret_count.cellSolCount = findMedian(numCountList);
+    }
     ret_count.hashCount = minHash;
 
     return ret_count;
@@ -520,6 +547,8 @@ void Counter::one_measurement_count(
     int64_t numExplored = 0;
     int64_t lowerFib = 0;
     int64_t upperFib = total_max_xors;
+    //set an upper bound
+    threshold_sols[total_max_xors+1] = 0;
 
     int64_t hashCount = mPrev;
     int64_t hashPrev = hashCount;
@@ -571,6 +600,7 @@ void Counter::one_measurement_count(
             ) {
                 numHashList.push_back(hashCount);
                 numCountList.push_back(num_sols);
+
                 mPrev = hashCount;
                 return;
             }
@@ -606,7 +636,9 @@ void Counter::one_measurement_count(
             ) {
                 numHashList.push_back(hashCount+1);
                 numCountList.push_back(sols_for_hash[hashCount+1]);
+
                 mPrev = hashCount+1;
+
                 return;
             }
 
@@ -623,6 +655,9 @@ void Counter::one_measurement_count(
                 // Whenever the above condition is satisfied, we are in binary search mode
                 lowerFib = hashCount;
                 hashCount = (lowerFib+upperFib)/2;
+                if (hashCount == lowerFib) {
+                    hashCount++;
+                }
             } else {
 
                 // We are in exponential search mode.
